@@ -2,26 +2,27 @@ from darknet import *
 import numpy as np
 import cv2
 import csv
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import os, os.path
+import time
 
-csvdir = "../realsense-data/csv/"
-csvprefix = "_Depth_"
-pngdir = "../realsense-data/png/"
-pngprefix = "_Color_"
+csvdir = "../realsense-data/depth_20190628road/"
+csvprefix = ""
+pngdir = "../realsense-data/color_20190628road/"
+pngprefix = ""
 
-detectedpngdir = "../realsense-data/detected_png/"
-detectedpltdir = "../realsense-data/detected_plt/"
+detectedpngdir = "../realsense-data/color/"
+detectedpltdir = "../realsense-data/depth/"
 
 f_x = 385.522
 c_x = 318.766
-DEPTH_SCALE = 1000.0
+DEPTH_SCALE = 0.001
 
-xmax = 3000
-xmin = -3000
-xspan = (xmax - xmin) * 0.01
-zmax = 6000
-zspan = zmax * 0.01
+#xmax = 100000
+#xmin = -100000
+#xspan = (xmax - xmin) * 0.01
+#zmax = 200000
+#zspan = zmax * 0.01
 
 def array_to_image(arr):
     arr = arr.transpose(2,0,1)
@@ -34,7 +35,7 @@ def array_to_image(arr):
     return im
 
 def get_color(name):
-    color_list = ((1,0,0),(0,1,0),(0,0,1),(1,1,0),(1,0,1),(0,1,1))
+    color_list = ((0,0,1),(0,1,0),(1,0,0),(1,1,0),(1,0,1),(0,1,1))
     if name in get_color.name_list:
         return np.array(color_list[get_color.name_list.index(name) % 6])
     else:
@@ -58,44 +59,45 @@ def detect3d(net, meta, image, thresh=.5, hier_thresh=.5, nms=.45):
 
     try:
          with open(csvdir+csvprefix+str_im+".csv") as f:
-            reader = csv.reader(f)
+            reader = csv.reader(f,delimiter=' ')
             l = [row for row in reader]
     except:
         print("cannot open the file")
 
-    plt.figure()
+    #plt.figure()
     for j in range(num):
         for i in range(meta.classes):
             if dets[j].prob[i] > 0:
-                try:
-                    b = dets[j].bbox
-                    depth = float(l[int(b.y)][int(b.x)])
-                    color = get_color(meta.names[i])
+                #try:
+                b = dets[j].bbox
+                depth = float(l[int(b.y)][int(b.x)])
+                color = get_color(meta.names[i])
                     # calculate gloabal map point
-                    p_z = depth * DEPTH_SCALE
-                    p_x = (b.x - c_x) * p_z / f_x
-                    plt.scatter(p_x,p_z,c=tuple(color),s=100)
+                p_z = depth * DEPTH_SCALE
+                p_x = (b.x - c_x) * p_z / f_x
+                #plt.scatter(p_x,p_z,c=tuple(color),s=100)
                     # plt.scatter(p_x,p_z,c=tuple(color),s=100,alpha=0.7)
-                    plt.text(p_x+xspan, p_z+zspan, "{0}({1})".format(meta.names[i],round(dets[j].prob[i],2)),fontsize=10)
+                #plt.text(p_x+xspan, p_z+zspan, "{0}({1})".format(meta.names[i],round(dets[j].prob[i],2)),fontsize=10)
                     # draw rectangles
-                    cv2.rectangle(arr_im,(int(b.x-b.w/2),int(b.y-b.h/2)),(int(b.x+b.w/2),int(b.y+b.h/2)),tuple(255*color),3)
-                    res.append((meta.names[i], dets[j].prob[i], (b.x, b.y, b.w, b.h),depth))
-                except:
-                    print("calculation failed")
-                    continue
+                cv2.rectangle(arr_im,(int(b.x-b.w/2),int(b.y-b.h/2)),(int(b.x+b.w/2),int(b.y+b.h/2)),tuple(255*color),1)
+                cv2.putText(arr_im, "{0}({1}m)".format(meta.names[i],round(p_z,2)), (int(b.x-b.w/2-5), int(b.y-b.h/2-8)), cv2.FONT_HERSHEY_SIMPLEX, .5, tuple(255*color), 1)
+                res.append((meta.names[i], dets[j].prob[i], (b.x, b.y, b.w, b.h),depth))
+                #except:
+                #print("calculation failed")
+                   # continue
     res = sorted(res, key=lambda x: -x[1])
     free_detections(dets, num)
 
-    plt.xlim(xmin,xmax)
-    plt.ylim(0,zmax)
-    plt.xlabel('x axis [mm]')
-    plt.ylabel('z axis [mm]')
-    plt.grid()
-    plt.savefig(detectedpltdir+str_im+".png")
+    #plt.xlim(xmin,xmax)
+    #plt.ylim(0,zmax)
+    #plt.xlabel('x axis [mm]')
+    #plt.ylabel('z axis [mm]')
+    #plt.grid()
+    #plt.savefig(detectedpltdir+str_im+".png")
     #plt.show()
     #plt.pause(0.1)
-    arr_im = cv2.cvtColor(arr_im, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(detectedpngdir+str_im+".png",arr_im)
+    #arr_im = cv2.cvtColor(arr_im, cv2.COLOR_RGB2BGR)
+    #cv2.imwrite(detectedpngdir+str_im+".png",arr_im)
     cv2.imshow("output",arr_im)
     cv2.waitKey(1)
 
@@ -105,6 +107,9 @@ if __name__ == "__main__":
     net = load_net("cfg/yolov3.cfg", "yolov3.weights", 0)
     meta = load_meta("cfg/coco.data")
     framenum = len([name for name in os.listdir(pngdir) if os.path.isfile(os.path.join(pngdir, name))])
+    old_time = time.time()
     for i in range(1,framenum):
         r = detect3d(net, meta, i)
-        print(i,": ",r)
+        cur_time = time.time()
+        print(i, 1 / (cur_time - old_time), r)
+        old_time = cur_time
